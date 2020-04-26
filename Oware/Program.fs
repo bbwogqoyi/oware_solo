@@ -4,8 +4,26 @@ type StartingPosition =
     | South
     | North
 
+type State =
+  | InProgress
+  | SouthWon
+  | NorthWon
+  | Draw
+
+type GameState = {
+  player:StartingPosition
+  board:(int*int*int*int*int*int*int*int*int*int*int*int)
+  score:(int*int)
+  index:int
+  state:State
+}
+
+type IndexOperation =
+  | Decrement
+  | Increment
+
 /// No questions ... It works
-let addSeed houseIndex board =
+let _addSeed houseIndex board =
   match houseIndex, board with
   | 01, (a,b,c,d,e,f,a',b',c',d',e',f')  -> (a+1,b,c,d,e,f,a',b',c',d',e',f')
   | 02, (a,b,c,d,e,f,a',b',c',d',e',f')  -> (a,b+1,c,d,e,f,a',b',c',d',e',f') 
@@ -21,7 +39,7 @@ let addSeed houseIndex board =
   | 12, (a,b,c,d,e,f,a',b',c',d',e',f')  -> (a,b,c,d,e,f,a',b',c',d',e',f'+1)
   | _ -> failwith "index is out-of-bound"
 
-let emptyHouse houseIndex board =
+let _emptyHouse houseIndex board =
   match houseIndex, board with
   | 01, (a,b,c,d,e,f,a',b',c',d',e',f')  -> (0,b,c,d,e,f,a',b',c',d',e',f')
   | 02, (a,b,c,d,e,f,a',b',c',d',e',f')  -> (a,0,c,d,e,f,a',b',c',d',e',f') 
@@ -37,12 +55,42 @@ let emptyHouse houseIndex board =
   | 12, (a,b,c,d,e,f,a',b',c',d',e',f')  -> (a,b,c,d,e,f,a',b',c',d',e',0)
   | _ -> failwith "index is out-of-bound"
 
-let incrementIndex index =
-  match index=12 with 
-  | true -> 1
-  | false -> index+1
+let _updateIndex (op:IndexOperation) index =
+  let value = 
+    match op with
+    | Increment -> index+1
+    | Decrement -> index-1
+  match value>12, value<1 with 
+  | true, _ -> 1
+  | _, true -> 12
+  | _,_ -> value
 
-let getSeeds houseIndex (_, board) : int=
+let _isDraw (s, n) = s=n && s=24   
+
+let _switchPlayer gameState =
+  match gameState.player, gameState.state=InProgress with
+  | South, true -> { gameState with player=North }
+  | North, true -> { gameState with player=South }
+  | _ -> gameState
+
+let _updateGameState gameState =
+  let score = 
+    match gameState.player, gameState.score with
+    | South, (s, _) -> s
+    | North, (_, n) -> n
+
+  match (gameState.player, (score>=25), (_isDraw gameState.score)) with
+  | South, true, _ -> { gameState with state=SouthWon }
+  | North, true, _ -> { gameState with state=NorthWon }
+  | _, false, true -> { gameState with state=Draw }
+  | _ -> gameState
+
+let _isHouseOwnedByPLayer (player:StartingPosition) (houseIndex:int) =
+  match player with
+  | South -> houseIndex<7
+  | North -> houseIndex>=7
+
+let getSeeds houseIndex {board=board} : int=
   match houseIndex, board with
   | 01, (a,_,_,_,_,_,_,_,_,_,_,_)  -> a
   | 02, (_,b,_,_,_,_,_,_,_,_,_,_)  -> b
@@ -58,31 +106,94 @@ let getSeeds houseIndex (_, board) : int=
   | 12, (_,_,_,_,_,_,_,_,_,_,_,f')  -> f'
   | _ -> failwith "index is out-of-bound"
 
-let useHouse (houseIndex:int) gameState =
+let _isValidMove gameState =
+  let rec checkOnOpponent count houses = 
+    match houses with
+    | [] -> count
+    | entry::rest -> 
+      let numOfSeeds = getSeeds entry gameState
+      checkOnOpponent (count+numOfSeeds) rest
+
+  let opponentHouseList =
+    match gameState.player with
+    | South -> List.init 6 (fun x -> x+7) 
+    | North -> List.init 6 (fun x -> x+1)
+  
+  let canOpponentPlay = (checkOnOpponent 0 opponentHouseList) > 0
+  let isDraw = _isDraw gameState.score
+  canOpponentPlay || isDraw
+
+let _newScore previousGameState gameState =
+  let rec helper index board score =
+    let isPlayers = (_isHouseOwnedByPLayer gameState.player index)
+    match isPlayers with
+    | true ->  { gameState with score=score; board=board}
+    | false ->
+      let numOfSeeds = getSeeds index gameState
+      match numOfSeeds with
+      | 2 | 3 ->
+        let score =
+          match gameState.player, score with
+          | South, (s, n) -> (s+numOfSeeds, n)
+          | North, (s, n) -> (s, n+numOfSeeds)
+        helper (_updateIndex Decrement index) (_emptyHouse index board) score
+      | _ ->
+        { gameState with score=score; board=board}
+
+  let finalState = helper gameState.index gameState.board gameState.score 
+  match _isValidMove finalState with
+  | false -> previousGameState
+  | true -> finalState
+
+let _executePlay gameState houseIndex numOfSeeds =
   let rec distributeSeeds index numOfSeeds board =
-    match numOfSeeds>0 with
-    | false -> board
-    | true -> 
-      let newBoard = addSeed index board
-      distributeSeeds (incrementIndex index) (numOfSeeds-1) newBoard
+     match numOfSeeds>0, index=houseIndex with
+     | false,_ -> ((_updateIndex Decrement index), board)
+     | true, true ->
+        distributeSeeds (_updateIndex Increment index) (numOfSeeds) board
+     | true, false -> 
+       let newBoard = _addSeed index board
+       distributeSeeds (_updateIndex Increment index) (numOfSeeds-1) newBoard
 
-  let (player, board) = gameState
+  let updatedBoard = _emptyHouse houseIndex gameState.board
+  let startIndex = _updateIndex Increment houseIndex 
+  let (lastHouse, newBoard) = distributeSeeds startIndex numOfSeeds updatedBoard
+  
+
+  _newScore gameState { gameState with board=newBoard ; index=lastHouse }
+  |> _updateGameState
+  |> _switchPlayer 
+
+let useHouse (houseIndex:int) gameState =
   let numOfSeeds = getSeeds houseIndex gameState
-  let updatedBoard = emptyHouse houseIndex board
-  let startIndex = incrementIndex houseIndex
-  let newBoard = distributeSeeds startIndex numOfSeeds updatedBoard
-
-  match player with
-  | South -> (North, newBoard)
-  | North -> (South, newBoard)
+  let isPlayerHouse = _isHouseOwnedByPLayer gameState.player houseIndex
+  let contiuneGame = gameState.state = InProgress
+  match numOfSeeds>0 && isPlayerHouse && contiuneGame with 
+  | false -> gameState
+  | true -> _executePlay gameState houseIndex numOfSeeds
 
 let start (position:StartingPosition) = 
-  let initialBoard = (4,4,4, 4,4,4, 4,4,4, 4,4,4)
-  ( position, initialBoard )
+  { player=position; score=(0,0); board=(4,4,4, 4,4,4, 4,4,4, 4,4,4); index=0; state=InProgress }
 
-let score board = failwith "Not implemented"
+let playGame numbers =
+  let rec play xs game =
+      match xs with
+      | [] -> game
+      | x::xs -> play xs (useHouse x game)
+  play numbers (start South)
 
-let gameState board = failwith "Not implemented"
+let score gameState = 
+  gameState.score
+
+let gameState gameState = 
+  match gameState.state with
+  | Draw -> "Game ended in a draw"
+  | SouthWon -> "South won"
+  | NorthWon -> "North won"
+  | InProgress ->
+    match gameState.player with
+    | South -> "South's turn"
+    | North -> "North's turn"
 
 [<EntryPoint>]
 let main _ =
