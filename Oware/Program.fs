@@ -109,8 +109,13 @@ let getSeeds houseIndex {board=board} : int=
 
 let _getPlayerHouseList (player:PlayerOption) = 
   match player with
-  | South -> List.init 6 (fun x -> x+7) 
-  | North -> List.init 6 (fun x -> x+1)
+  | South -> List.init 6 (fun x -> x+1)
+  | North -> List.init 6 (fun x -> x+7) 
+
+let _getOpponentsHouseList (current:PlayerOption) = 
+  match current with 
+  | South -> _getPlayerHouseList North
+  | North -> _getPlayerHouseList South
 
 let _isValidMove gameState =
   let rec checkOnOpponent count houses = 
@@ -120,7 +125,7 @@ let _isValidMove gameState =
       let numOfSeeds = getSeeds entry gameState
       checkOnOpponent (count+numOfSeeds) rest
 
-  let opponentHouseList = _getPlayerHouseList gameState.player
+  let opponentHouseList = _getOpponentsHouseList gameState.player
   
   let canOpponentPlay = (checkOnOpponent 0 opponentHouseList) > 0
   let isDraw = _isDraw gameState.score
@@ -211,7 +216,17 @@ let playGame numbers =
       | x::xs -> play xs (useHouse x game)
   play numbers (start South)
 
-let __getUserInput () =
+let _stringOf = function
+| 1 -> "A" | 2 -> "B" | 3 -> "C"| 4 -> "D" | 5 -> "E" | 6 -> "F"
+| 7 -> "a" | 8 -> "b" | 9 -> "c" | 10 -> "d" | 11 -> "e" | 12 -> "f"
+| _ -> String.Empty
+
+let rec _concat (state:string) (_in:int list) (mapper:int->string) = 
+  match _in with
+  | [] -> state
+  | entry::rest -> _concat (state+" "+(mapper entry)+" |") rest mapper
+
+let __getUserInput game = // impure
   let rec getConsoleInput () = 
     let retry () = printfn "Invalid selection, try again" |> getConsoleInput
     let input = System.Console.ReadLine()
@@ -222,29 +237,36 @@ let __getUserInput () =
       match selectedHouse>=1 && selectedHouse<=12 with
       | false -> retry ()
       | true -> selectedHouse
+
+  printfn "%s\n" (gameState game)
   getConsoleInput ()
 
-let __displayGameBoard gameState = 
-  let _south = List.map (fun house -> getSeeds house gameState) (_getPlayerHouseList South)
-  let _north = List.map (fun house -> getSeeds house gameState) (_getPlayerHouseList North)
+let __displayGameBoard gameState = // impure
+  printfn "= = = = = NORTH = = = = ="
+  let _northHouses = List.rev (_getPlayerHouseList North)
+  let _north = List.map (fun house -> getSeeds house gameState) _northHouses
+  printfn "%s" (_concat "|" _northHouses _stringOf)
+  printfn "%s" (_concat "|" _north (fun x -> string x))
+  printfn "= = = = = = = = = = = = ="
+  let _southHouses = (_getPlayerHouseList South)
+  let _south = List.map (fun house -> getSeeds house gameState) _southHouses
+  printfn "%s" (_concat "|" _south (fun x -> string x))
+  printfn "%s" (_concat "|" _southHouses _stringOf)
+  printfn "= = = = = SOUTH = = = = ="
 
-  printfn "%A" _south
-  // let north = String.concat "{0} {1} {2} {3} {4} {5}" getSeeds 12 gameState
 
-//let playGameInteractive () =
-//  let rec play game =
-//      match xs with
-//      | [] -> game
-//      | x::xs -> play xs (useHouse x game)
-//  play (start South)
+let playGameInteractive () =
+  let rec play (game:GameState) =
+    match game.state = InProgress with
+    | false -> __getUserInput game
+    | true -> 
+      __displayGameBoard game
+      let x = __getUserInput game
+      play (useHouse x game)
+  play (start South)
 
 
 [<EntryPoint>]
 let main _ =
-  let game = (start South)
-  __displayGameBoard game
-
-
-  //printfn "%s" (gameState game)
-  //__getUserInput () |> ignore
+  playGameInteractive () |> ignore
   0 // return an integer exit code
