@@ -132,11 +132,23 @@ let _newScore previousGameState gameState =
       let numOfSeeds = getSeeds index gameState
       match numOfSeeds with
       | 2 | 3 ->
-        let score =
+        let updatedBoard = (_emptyHouse index board)
+        let updatedScore =
           match gameState.player, score with
           | South, (s, n) -> (s+numOfSeeds, n)
           | North, (s, n) -> (s, n+numOfSeeds)
-        helper (_updateIndex Decrement index) (_emptyHouse index board) score
+        
+        let (newScore, newBoard) =
+          match ( _isValidMove { gameState with board=updatedBoard; score=updatedScore} ) with
+          | false -> (score, board)
+          | true -> 
+            let newScore = 
+              match gameState.player, score with
+              | South, (s, n) -> (s+numOfSeeds, n)
+              | North, (s, n) -> (s, n+numOfSeeds)
+            (newScore, updatedBoard)
+
+        helper (_updateIndex Decrement index) newBoard newScore
       | _ ->
         { gameState with score=score; board=board}
 
@@ -158,11 +170,13 @@ let _executePlay gameState houseIndex numOfSeeds =
   let updatedBoard = _emptyHouse houseIndex gameState.board
   let startIndex = _updateIndex Increment houseIndex 
   let (lastHouse, newBoard) = distributeSeeds startIndex numOfSeeds updatedBoard
-  
 
-  _newScore gameState { gameState with board=newBoard ; index=lastHouse }
-  |> _updateGameState
-  |> _switchPlayer 
+  match ( _isValidMove { gameState with board=newBoard } ) with
+  | false -> gameState
+  | true ->
+    _newScore gameState { gameState with board=newBoard ; index=lastHouse }
+    |> _updateGameState
+    |> _switchPlayer 
 
 let useHouse (houseIndex:int) gameState =
   let numOfSeeds = getSeeds houseIndex gameState
@@ -174,13 +188,6 @@ let useHouse (houseIndex:int) gameState =
 
 let start (position:StartingPosition) = 
   { player=position; score=(0,0); board=(4,4,4, 4,4,4, 4,4,4, 4,4,4); index=0; state=InProgress }
-
-let playGame numbers =
-  let rec play xs game =
-      match xs with
-      | [] -> game
-      | x::xs -> play xs (useHouse x game)
-  play numbers (start South)
 
 let score gameState = 
   gameState.score
@@ -195,11 +202,15 @@ let gameState gameState =
     | South -> "South's turn"
     | North -> "North's turn"
 
+let playGame numbers =
+  let rec play xs game =
+      match xs with
+      | [] -> game
+      | x::xs -> play xs (useHouse x game)
+  play numbers (start South)
+
+
 [<EntryPoint>]
 let main _ =
     printfn "Hello from F#!"
     0 // return an integer exit code
-
-//let board = gameState.board
-//let numOfSeeds = board.[boardIndex]
-//let numOfCycles, reminder = numOfSeeds/12, numOfSeeds%12
