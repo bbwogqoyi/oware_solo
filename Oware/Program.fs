@@ -1,8 +1,9 @@
 ﻿module Oware
+open System
 
-type StartingPosition =
-    | South
-    | North
+type PlayerOption =
+  | South
+  | North
 
 type State =
   | InProgress
@@ -11,7 +12,7 @@ type State =
   | Draw
 
 type GameState = {
-  player:StartingPosition
+  player:PlayerOption
   board:(int*int*int*int*int*int*int*int*int*int*int*int)
   score:(int*int)
   index:int
@@ -85,7 +86,7 @@ let _updateGameState gameState =
   | _, false, true -> { gameState with state=Draw }
   | _ -> gameState
 
-let _isHouseOwnedByPLayer (player:StartingPosition) (houseIndex:int) =
+let _isHouseOwnedByPLayer (player:PlayerOption) (houseIndex:int) =
   match player with
   | South -> houseIndex<7
   | North -> houseIndex>=7
@@ -106,6 +107,11 @@ let getSeeds houseIndex {board=board} : int=
   | 12, (_,_,_,_,_,_,_,_,_,_,_,f')  -> f'
   | _ -> failwith "index is out-of-bound"
 
+let _getPlayerHouseList (player:PlayerOption) = 
+  match player with
+  | South -> List.init 6 (fun x -> x+7) 
+  | North -> List.init 6 (fun x -> x+1)
+
 let _isValidMove gameState =
   let rec checkOnOpponent count houses = 
     match houses with
@@ -114,10 +120,7 @@ let _isValidMove gameState =
       let numOfSeeds = getSeeds entry gameState
       checkOnOpponent (count+numOfSeeds) rest
 
-  let opponentHouseList =
-    match gameState.player with
-    | South -> List.init 6 (fun x -> x+7) 
-    | North -> List.init 6 (fun x -> x+1)
+  let opponentHouseList = _getPlayerHouseList gameState.player
   
   let canOpponentPlay = (checkOnOpponent 0 opponentHouseList) > 0
   let isDraw = _isDraw gameState.score
@@ -186,11 +189,10 @@ let useHouse (houseIndex:int) gameState =
   | false -> gameState
   | true -> _executePlay gameState houseIndex numOfSeeds
 
-let start (position:StartingPosition) = 
+let start (position:PlayerOption) = 
   { player=position; score=(0,0); board=(4,4,4, 4,4,4, 4,4,4, 4,4,4); index=0; state=InProgress }
 
-let score gameState = 
-  gameState.score
+let score gameState = gameState.score
 
 let gameState gameState = 
   match gameState.state with
@@ -209,8 +211,40 @@ let playGame numbers =
       | x::xs -> play xs (useHouse x game)
   play numbers (start South)
 
+let __getUserInput () =
+  let rec getConsoleInput () = 
+    let retry () = printfn "Invalid selection, try again" |> getConsoleInput
+    let input = System.Console.ReadLine()
+    match (not (String.IsNullOrWhiteSpace input)) && (String.forall System.Char.IsDigit input)  with
+    | false -> retry ()
+    | true -> 
+      let selectedHouse = int input
+      match selectedHouse>=1 && selectedHouse<=12 with
+      | false -> retry ()
+      | true -> selectedHouse
+  getConsoleInput ()
+
+let __displayGameBoard gameState = 
+  let _south = List.map (fun house -> getSeeds house gameState) (_getPlayerHouseList South)
+  let _north = List.map (fun house -> getSeeds house gameState) (_getPlayerHouseList North)
+
+  printfn "%A" _south
+  // let north = String.concat "{0} {1} {2} {3} {4} {5}" getSeeds 12 gameState
+
+//let playGameInteractive () =
+//  let rec play game =
+//      match xs with
+//      | [] -> game
+//      | x::xs -> play xs (useHouse x game)
+//  play (start South)
+
 
 [<EntryPoint>]
 let main _ =
-    printfn "Hello from F#!"
-    0 // return an integer exit code
+  let game = (start South)
+  __displayGameBoard game
+
+
+  //printfn "%s" (gameState game)
+  //__getUserInput () |> ignore
+  0 // return an integer exit code
